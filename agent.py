@@ -31,14 +31,14 @@ class Agent:
         self.y = random.randint(0,HEIGHT -1)
 
         #個体差
-        self.speed = random.uniform(1.0,3.0)
-        self.stay_time = random.uniform(20,40)
-        self.exit_time = random.uniform(3,10)
+        self.speed = random.uniform(1.0,3.0) #速度
+        self.stay_time = random.uniform(20,40) #滞在時間
+        self.exit_time = random.uniform(3,10) #出る時間
 
         #状態
         self.stage = 0
 
-
+    #行動の振り分け
     def update(self):
         if self.type == TYPE_WAITING:
             self.update_waiting()
@@ -47,6 +47,7 @@ class Agent:
         elif self.type == TYPE_STAYER:
             self.update_stayer()
 
+   #振り分けされたエージェントがどのように動くか
     def update_waiting(self):
 
     def update_direct(self):
