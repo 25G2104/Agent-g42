@@ -9,11 +9,6 @@ import os
 WIDTH = 80 #空間の幅
 HEIGHT = 50 #空間の高さ
 
-# 席の右上、左下の座標をタプルで指定、矩形で囲んで領域とする。
-SEAT_START = (,) # 席の領域の右上の座標(x,y)
-SEAT_END = (,)   # 席の領域の左下の座標(x,y)
-SEAT_CENTER = ((SEAT_END[0]-SEAT_START[0])/2,(SEAT_END[1]-SEAT_START[1])/2) # 席の領域の中央点
-
 AGENTS_NUMBER = 300 #エージェントの数
 CAPACITY = 200  #収容人数
 SIMULATION_TIME = 200 #シミュレーション時間
