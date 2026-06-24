@@ -76,6 +76,7 @@ class Agent:
 
         #状態
         self.stage = 0
+        self.wait_timer = 0
 
     #行動の振り分け
     def update(self):
@@ -87,13 +88,17 @@ class Agent:
             self.update_stayer()
 
    #振り分けされたエージェントがどのように動くか
-    def update_ticket_waiting(self):
+    def update_ticket_waiting(self): #券売機待ち
         self.wait_timer -= 1
         
         if self.wait_timer <= 0:
             self.stage = STAGE_FOOD_WAITING
 
-    def update_food_waiting(self):
+    def update_food_waiting(self): #料理受け取り待ち
+        self.wait_timer -= 1
+
+        if self.wait_timer <= 0:
+            self.stage = STAGE_EATING
 
     def update_waiting(self):
         pass
@@ -166,3 +171,17 @@ def visualize():
 
 if __name__ == '__main__':
     visualize()
+
+
+#券売機メモ（券売機のところに来たらwait_timerをランダムに設定する。とりあえず仮で3,10にしてる）
+self.wait_timer = random.randint(3, 10)
+
+#配膳（料理受け取り）待ちメモ（配膳口に来たらwait_timerをそれぞれランダムに設定。カレーの待ち時間を短めにしたりした方がいいかも？とりあえず仮で設定してる）
+if self.food_type == CURRY:
+    self.wait_timer = random.randint(2, 5)
+
+elif self.food_type == NOODLE:
+    self.wait_timer = random.randint(5, 12)
+
+elif self.food_type == SETMEAL:
+    self.wait_timer = random.randint(3, 8)
