@@ -6,7 +6,7 @@ import random
 import os
 
 #パラメータの定義
-WIDTH = 50 #空間の幅
+WIDTH = 80 #空間の幅
 HEIGHT = 50 #空間の高さ
 AGENTS_NUMBER = 300 #エージェントの数
 CAPACITY = 200  #収容人数
@@ -22,8 +22,13 @@ COLOR_WATING = 'red'
 COLOR_DIRECT = 'blue'
 COLOR_STAYER = 'green'
 
+# 設備の配置座標
+START_POS = (10.0, 0) #建物入口
+ENTRANCE_POS = (20.0, 40) #食堂入口
+EXIT_POS = (20.0, 10.0) #食堂出口
 
-
+TICKET_POS = [(1.0, 10.0 + i * 10) for i in range(4)] 
+COUNTER_POS = [(35.0 + i * 12, 49.0) for i in range(3)]
 
 #エージェントのクラスの定義
 class Agent:
@@ -93,3 +98,31 @@ while len(agents) < AGENTS_NUMBER:
             a.type = TYPE_STAYER
 
     group_id += 1
+
+
+
+def visualize():
+    fig, ax = plt.subplots(figsize=(6, 6))
+    ax.set_xlim(0, WIDTH)
+    ax.set_ylim(0, HEIGHT)
+    ax.set_aspect('equal')
+    ax.grid(True)
+    ax.set_title('Agent Simulation')
+
+    # --- 1点の座標（タプル）を置いて、名前ラベルを付ける ---
+    def put(pos, label, marker='o', color='black', size=120):
+        ax.scatter(pos[0], pos[1], marker=marker, c=color, s=size)
+        ax.text(pos[0] + 0.7, pos[1] + 0.7, label, fontsize=6)
+
+    put(START_POS, 'START', marker='*', color='black', size=150)
+    put(ENTRANCE_POS, 'ENTRANCE', marker='*', color='black', size=150)
+    put(EXIT_POS, 'EXIT', marker='*', color='black', size=150)
+    for p in TICKET_POS:
+        put(p, 'TICKET', marker='s', color='blue', size=150)
+    for p in COUNTER_POS:
+        put(p, 'COUNTER', marker='s', color='green', size=150)
+    plt.tight_layout()
+    plt.show()
+
+if __name__ == '__main__':
+    visualize()
