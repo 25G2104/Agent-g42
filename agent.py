@@ -8,6 +8,7 @@ import os
 #パラメータの定義
 WIDTH = 80 #空間の幅
 HEIGHT = 50 #空間の高さ
+
 AGENTS_NUMBER = 300 #エージェントの数
 CAPACITY = 200  #収容人数
 SIMULATION_TIME = 200 #シミュレーション時間
@@ -100,10 +101,41 @@ class Agent:
         if self.wait_timer <= 0:
             self.stage = STAGE_EATING
 
+    def update_food_waiting(self):
+        pass
     def update_waiting(self):
         pass
+
     def update_direct(self):
-        pass
+        # 目標座標がある場合、そこに移動する（グリッドベース、1マスずつ）
+        while self.target_x is not None and self.target_y is not None:
+            # 目標座標を整数に変換
+            target_x_int = int(self.target_x)
+            target_y_int = int(self.target_y)
+            x_int = int(self.x)
+            y_int = int(self.y)
+            
+            # 目標に到達したかチェック
+            if x_int == target_x_int and y_int == target_y_int:
+                self.target_x = None
+                self.target_y = None
+                self.stage += 1  # ステージを進める
+                return
+            
+            # x方向とy方向の差を計算
+            dx = target_x_int - x_int
+            dy = target_y_int - y_int
+            
+            # 優先度を決めて1マスずつ移動（x方向を優先）
+            if abs(dx) > abs(dy):
+                self.x = x_int + (1 if dx > 0 else -1)
+            else:
+                self.y = y_int + (1 if dy > 0 else -1)
+            
+            # 境界チェック
+            self.x = np.clip(self.x, 0, WIDTH - 1)
+            self.y = np.clip(self.y, 0, HEIGHT - 1)
+    
     def update_stayer(self):
         pass
     
