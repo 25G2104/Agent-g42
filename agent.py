@@ -22,11 +22,19 @@ COLOR_WATING = 'red'
 COLOR_DIRECT = 'blue'
 COLOR_STAYER = 'green'
 
+
+
+
 #エージェントのクラスの定義
 class Agent:
 
-    def __init__(self,agent_type):
+    #グループ追加
+    def __init__(self,agent_type, group_id, group_size):
         self.type = agent_type
+
+        self.group_id = group_id #どのグループか
+        self.group_size = group_size #グループの人数
+
         self.x = random.randint(0,WIDTH -1)
         self.y = random.randint(0,HEIGHT -1)
 
@@ -49,7 +57,39 @@ class Agent:
 
    #振り分けされたエージェントがどのように動くか
     def update_waiting(self):
-
+        pass
     def update_direct(self):
-
+        pass
     def update_stayer(self):
+        pass
+    
+#集団の生成と分類
+agents = []
+group_id = 0
+
+while len(agents) < AGENTS_NUMBER:
+
+    group_size = random.randint(1,5)
+    group_agents = []
+
+    #メンバー作成
+    for i in range(group_size):
+        agent = Agent(
+            agent_type=None,
+            group_id=group_id,
+            group_size=group_size
+        )
+        group_agents.append(agent)
+        agents.append(agent)
+
+    #分類分け
+    group_agents[0].type = TYPE_WAITING
+    for a in group_agents[1:]:
+        a.type = TYPE_DIRECT
+
+    #居座りたい人を混ぜる
+    for a in group_agents:
+        if random.random() < 0.1:
+            a.type = TYPE_STAYER
+
+    group_id += 1
