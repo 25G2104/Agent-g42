@@ -48,7 +48,13 @@ class Agent:
             self.update_stayer()
 
    #振り分けされたエージェントがどのように動くか
-    def update_waiting(self):
+    def update_ticket_waiting(self):
+        self.wait_timer -= 1
+        
+        if self.wait_timer <= 0:
+            self.stage = STAGE_FOOD_WAITING
+
+    def update_food_waiting(self):
 
     def update_direct(self):
 
