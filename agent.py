@@ -4,6 +4,7 @@ import matplotlib.animation as animation
 import datetime
 import random
 import os
+import math
 
 #パラメータの定義
 WIDTH = 80 #空間の幅
@@ -17,11 +18,13 @@ SIMULATION_TIME = 200 #シミュレーション時間
 TYPE_WAITING = 0 #並ぶ人
 TYPE_DIRECT = 1 #席に行く人
 TYPE_STAYER = 2 #居座り続ける人
+TYPE_EXIT = 3 #退出する人
 
 #エージェントの色分け
 COLOR_WATING = 'red'
 COLOR_DIRECT = 'blue'
 COLOR_STAYER = 'green'
+COLOR_EXIT = 'purple'
 
 # 設備の配置座標
 START_POS = (10.0, 0) #建物出入口
@@ -40,6 +43,9 @@ for s in range(CAPACITY):
     sx = x0 + (s % cols) * dx
     sy = y0 + (s // cols) * dy
     SEAT_POS.append((sx, sy))
+
+SEAT_POS_AVA = [] # 使える座席（空席）
+SEAT_POS_AVA = SEAT_POS.copy() # はじめはすべての座席が空席
 
 ENTRANCE_Y = (37.0, 43.0) # 壁の隙間のy範囲
 EXIT_Y = (7.0, 13.0) # 壁の隙間のy範囲
@@ -70,6 +76,7 @@ class Agent:
         self.x = random.randint(0,WIDTH -1)
         self.y = random.randint(0,HEIGHT -1)
 
+
         #個体差
         self.speed = random.uniform(1.0,3.0) #速度
         self.stay_time = random.uniform(20,40) #滞在時間
@@ -79,6 +86,13 @@ class Agent:
         self.stage = 0
         self.wait_timer = 0
 
+        #目標座標
+        self.target_x = None
+        self.target_y = None
+        
+        self.stay_progress = -1 # 滞在の進捗（そもそも滞在中じゃないときは-1、0で退出）
+
+
     #行動の振り分け
     def update(self):
         if self.type == TYPE_WAITING:
@@ -87,6 +101,8 @@ class Agent:
             self.update_direct()
         elif self.type == TYPE_STAYER:
             self.update_stayer()
+        elif self.type == TYPE_EXIT:
+            self.update_exit()
 
    #振り分けされたエージェントがどのように動くか
     def update_ticket_waiting(self): #券売機待ち
@@ -137,7 +153,37 @@ class Agent:
             self.y = np.clip(self.y, 0, HEIGHT - 1)
     
     def update_stayer(self):
-        pass
+        # self.stay_timeの分だけ居座って出る
+        if self.stay_progress == -1:
+            self.stay_progress = self.stay_time # 個体ごとに初めて関数が呼び出されたときにカウントダウンの準備
+        elif self.stay_progress > 0:
+            self.stay_progress -= 1 # カウントダウン
+        elif self.stay_progress == 0: # self.stay_progressが0の場合退出のために動きだす
+            self.type = TYPE_EXIT # 退出の形態に遷る
+            self.target_x = None #下の関数の正常な動作のためいったん目標をリセットする
+            self.target_y = None 
+    
+    def update_exit(self):
+        # 1フレーム中self.speedの分だけ出口に近づく
+        if self.target_x is None or self.target_y is None:
+            self.target_x = EXIT_POS[0] #目標として出口を設定
+            self.target_y = EXIT_POS[1]
+        if self.target_y != self.y:
+            # 目的地のy座標にたどり着いていない場合、self.speedの速度でそこに向かいy座標を合わせる（距離をself.speedが追い越してしまう場合は、素通りしないように距離の分だけ座標を更新する）
+            self.y += min(self.speed, lambda distance: self.target_y - self.y)
+        elif self.target_x != self.x:
+            # 目的地のx座標にたどり着いていない場合、self.speedの速度でそこに向かいx座標を合わせる（距離をself.speedが追い越してしまう場合は、素通りしないように距離の分だけ座標を更新する）
+            self.x += min(self.speed, lambda distance: self.target_x - self.x)
+        else:
+            agents.remove(self) # たどり着いた場合自身を削除（もしかしたらエラーがでるかも）
+            
+
+
+
+
+
+            
+            
     
 #集団の生成と分類
 agents = []
