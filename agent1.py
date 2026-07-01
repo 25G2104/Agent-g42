@@ -76,7 +76,27 @@ numeric_map = [[SYMBOL_TO_INT[cell] for cell in row] for row in BASE_MAP]
 # 固定座標の定義
 ENTRANCE = (2, HEIGHT-2) 
 TICKET_MACHINES = [(2, 12), (2, 16), (2, 20)]
-COUNTERS = [(14, 5), (24, 5), (34, 5)]
+
+MENU_CURRY = 0
+MENU_SETMEAL = 1
+MENU_NOODLE = 2
+
+COUNTERS = {
+    MENU_CURRY: [(14,5)],
+    MENU_SETMEAL: [(24,5)],
+    MENU_NOODLE: [(34,5)]
+}
+
+
+# *1 カウンター2レーンずつ
+"""
+COUNTERS = {
+    MENU_CURRY:[(12,5),(16,5)],
+    MENU_SETMEAL:[(22,5),(26,5)],
+    MENU_NOODLE:[(32,5),(36,5)]
+}
+"""
+
 
 # 壁を迂回するための「安全な通路（チェックポイント）」
 CORRIDOR_X = 6      # 券売機と席の間にある縦の通路(Q)のX座標
@@ -94,10 +114,35 @@ QUEUE_COUNTER = {
     24: [(24, y) for y in range(6, 13)],
     34: [(34, y) for y in range(6, 13)]
 }
+
+
+# *1
+"""
+QUEUE_COUNTER
+14→12,16
+24→22,26
+34→32,36
+"""
+
+
 counter_queues = {14: [], 24: [], 34: []}
+
+
+# *1
+"""
+counter_queues = {12:[],16:[],22:[],26:[],32:[],36:[]}
+"""
+
 
 ticket_busy = [False, False, False]
 counter_busy = {14: False, 24: False, 34: False}
+
+
+# *1
+"""
+※counter_queuesと同様
+"""
+
 
 # ==========================================
 # 2. エージェントとグループのロジック
@@ -140,7 +185,12 @@ class Agent:
         self.path = [] 
         self.state = 'INITIAL'
         self.queue_index = None      
-        self.counter_lane = None     
+        self.counter_lane = None
+        self.menu = random.choices(
+            [MENU_CURRY, MENU_SETMEAL, MENU_NOODLE],
+            weights=[15, 40, 45],
+            k=1
+        )[0]     
         self.generate_initial_path()
 
     def move_toward(self, tx, ty):
@@ -233,7 +283,81 @@ class Agent:
                         ticket_busy[i] = False
                 
                 # 最短のカウンター列を選ぶ
-                lane = min(counter_queues.keys(), key=lambda x: len(counter_queues[x]))
+                if self.menu == MENU_CURRY:
+                    candidates = [14]
+
+                elif self.menu == MENU_SETMEAL:
+                    candidates = [24]
+                
+                else:
+                    candidates = [34]
+                
+
+                # *1
+                """
+                if self.menu==MENU_CURRY:
+                    candidates=[12,16]
+
+                elif self.menu==MENU_SETMEAL:
+                    candidates=[22,26]
+
+                else:
+                    candidates=[32,36]                
+                """
+
+                # *2 定食・丼だけ2レーン
+                """
+                if self.menu==MENU_CURRY:
+                    candidates=[14]
+
+                elif self.menu==MENU_SETMEAL:
+                    candidates=[22,26]
+
+                else:
+                    candidates=[34]
+                """
+
+                # *3 麺だけ2レーン
+                """
+                if self.menu==MENU_CURRY:
+                    candidates=[14]
+
+                elif self.menu==MENU_SETMEAL:
+                    candidates=[24]
+
+                else:
+                    candidates=[32,36]
+                """
+
+                # *4 定食・丼だけ4レーン
+                """
+                if self.menu==MENU_CURRY:
+                    candidates=[14]
+
+                elif self.menu==MENU_SETMEAL:
+                    candidates=[18,22,26,30]
+
+                else:
+                    candidates=[34]
+                """
+
+                # *5 麺だけ4レーン
+                """
+                if self.menu==MENU_CURRY:
+                    candidates=[14]
+
+                elif self.menu==MENU_SETMEAL:
+                    candidates=[24]
+
+                else:
+                    candidates=[28,32,36,40]
+                """
+
+                
+                lane = min(
+                    candidates,
+                    key=lambda x: len(counter_queues[x])
+                )
                 self.counter_lane = lane
                 self.queue_index = len(counter_queues[lane])
                 counter_queues[lane].append(self)
