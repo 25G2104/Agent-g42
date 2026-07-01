@@ -10,6 +10,9 @@ WIDTH = 45
 HEIGHT = 30
 BASE_MAP = [["." for _ in range(WIDTH)] for _ in range(HEIGHT)]
 
+##MARK: 条件切り替え
+SEAT_RESTRICT = 'SHORT' # SHORTは10～20、NORMALは15～25、LONGは20～30をeating_durationに指定する。
+
 # 外壁
 for x in range(WIDTH):
     BASE_MAP[0][x] = "W"
@@ -119,7 +122,13 @@ class Group:
         self.leader_seated = True
         self.timer_started = True
         if self.is_stayer_group:
-            self.eating_duration = random.randint(15, 25) 
+            # SEAT_RESTRICTで5分刻みで、どれくらい長く滞在させるか３段階の変更ができる
+            if SEAT_RESTRICT == 'NORMAL':
+                self.eating_duration = random.randint(15, 25) 
+            elif SEAT_RESTRICT == 'SHORT':
+                self.eating_duration = random.randint(10, 20)
+            elif SEAT_RESTRICT == 'LONG':
+                self.eating_duration = random.randint(20, 30)
         print(f"  [Group {self.group_id}] リーダーが座りました！タイマー開始。")
     
     def member_seated(self):
@@ -127,7 +136,12 @@ class Group:
         if self.seated_count == self.total_count:
             self.timer_started = True
             if self.is_stayer_group:
-                self.eating_duration = random.randint(15, 25) 
+                if SEAT_RESTRICT == 'NORMAL':
+                    self.eating_duration = random.randint(15, 25)
+                elif SEAT_RESTRICT == 'SHORT':
+                    self.eating_duration = random.randint(10, 20)
+                elif SEAT_RESTRICT == 'LONG':
+                    self.eating_duration = random.randint(20, 30)
             print(f"  [Group {self.group_id}] 全員揃いました！タイマー開始。")
 
 class Agent:
@@ -416,23 +430,26 @@ class Agent:
 # ==========================================
 all_agents = []
 all_groups = []
+x_history = []
+y_history = []
 agent_id_counter = 1
 group_id_counter = 101
 
-fig, ax = plt.subplots(figsize=(12, 8))
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
+
 
 # シミュレーション
 for step in range(1, 1201):
-    ax.clear()
+    ax1.clear()
     
     # 1. 背景マップとラベルの描画
-    ax.imshow(numeric_map, cmap=mcolors.ListedColormap(COLOR_LIST))
+    ax1.imshow(numeric_map, cmap=mcolors.ListedColormap(COLOR_LIST))
     labels_to_show = [
         (2, HEIGHT-2, "Entrance"), (2, 16, "Ticket"), (2, 8, "Queue"), 
         (24, 3, "Kitchen"), (14, 5, "C1"), (24, 5, "C2"), (34, 5, "C3"), (25, 20, "Tables")
     ]
     for lx, ly, text in labels_to_show:
-        ax.text(lx, ly, text, color="red", fontsize=10, ha="center", va="center", 
+        ax1.text(lx, ly, text, color="red", fontsize=10, ha="center", va="center", 
                  bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="black", lw=1, alpha=0.8))
         
     # 2. ランダムに新しいグループを店内に投入
@@ -471,17 +488,27 @@ for step in range(1, 1201):
         if agent.x != -1 and agent.y != -1:
             active_count += 1
             color = 'red' if agent.role == 'WAITING' else ('purple' if agent.role == 'STAYER' else 'blue')
-            ax.plot(agent.x, agent.y, marker='o', color=color, markersize=10, markeredgecolor='black', zorder=5)
-            ax.text(agent.x, agent.y - 1.2, f"{agent.role[0]}{agent.agent_id}", 
+            ax1.plot(agent.x, agent.y, marker='o', color=color, markersize=10, markeredgecolor='black', zorder=5)
+            ax1.text(agent.x, agent.y - 1.2, f"{agent.role[0]}{agent.agent_id}", 
                     color="black", weight="bold", fontsize=7, ha="center")
+    
+    # 5step毎に今いる人をカウントしてプロット
+    if step == 0 or step % 5 == 0:
+        x_history.append(step)
+        y_history.append(active_count)
+        ax2.plot(x_history, y_history, color='forestgreen')
+        ax2.set_xlabel("step")
+        ax2.set_ylabel("user")
+        ax2.set_title("statistics" , fontsize=14)
 
     # 4. 各グループのタイマー進行
     for group in all_groups:
         if group.timer_started and group.eating_duration > 0:
             group.eating_duration -= 1
 
-    plt.title(f"Multi-Group Canteen Simulation - Step {step} (Active Guests: {active_count})", fontsize=14)
+    ax1.set_title(f"Multi-Group Canteen Simulation - Step {step} \n (Active Guests: {active_count}) \n {SEAT_RESTRICT} var." , fontsize=14)
     
+
     display.clear_output(wait=True)
     display.display(fig)
     plt.pause(0.1)
