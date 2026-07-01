@@ -4,10 +4,15 @@ import matplotlib.colors as mcolors
 from IPython import display
 
 # ==========================================
-# モバイルオーダー設定
+# 条件設定
 # ==========================================
-MOBILE_ORDER_ENABLED = True   # モバイルオーダー機能のオン/オフ
-MOBILE_ORDER_RATIO = 0.5      # モバイルオーダーを利用する客の割合
+
+# モバイルオーダー
+MOBILE_ORDER_ENABLED = True   # モバイルオーダーのオン・オフ
+MOBILE_ORDER_RATIO = 0.5      # モバイルオーダーを利用する割合(0.0〜1.0)
+
+#席の時間制限
+SEAT_RESTRICT = 'SHORT' # SHORTは10～20、NORMALは15～25、LONGは20～30をeating_durationに指定する。
 
 # ==========================================
 # 1. レイアウト
@@ -15,9 +20,6 @@ MOBILE_ORDER_RATIO = 0.5      # モバイルオーダーを利用する客の割
 WIDTH = 45
 HEIGHT = 30
 BASE_MAP = [["." for _ in range(WIDTH)] for _ in range(HEIGHT)]
-
-##MARK: 条件切り替え
-SEAT_RESTRICT = 'SHORT' # SHORTは10～20、NORMALは15～25、LONGは20～30をeating_durationに指定する。
 
 # 外壁
 for x in range(WIDTH):
@@ -542,9 +544,9 @@ for step in range(1, 1201):
         if agent.x != -1 and agent.y != -1:
             active_count += 1
             color = {'WAITING': 'red', 'STAYER': 'purple', 'DIRECT': 'blue', 'MOBILE': 'green'}[agent.role]
-            ax1.plot(agent.x, agent.y, marker='o', color=color, markersize=10, markeredgecolor='black', zorder=5)
+            ax1.plot(agent.x, agent.y, marker='o', color=color, markersize=7, markeredgecolor='black', zorder=5)
             ax1.text(agent.x, agent.y - 1.2, f"{agent.role[0]}{agent.agent_id}", 
-                    color="black", weight="bold", fontsize=7, ha="center")
+                    color="black", weight="bold", fontsize=6, ha="center")
     
     # 5step毎に今いる人をカウントしてプロット
     if step == 0 or step % 5 == 0:
