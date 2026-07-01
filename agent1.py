@@ -4,6 +4,17 @@ import matplotlib.colors as mcolors
 from IPython import display
 
 # ==========================================
+# 条件設定
+# ==========================================
+
+# モバイルオーダー
+MOBILE_ORDER_ENABLED = True   # モバイルオーダーのオン・オフ
+MOBILE_ORDER_RATIO = 0.5      # モバイルオーダーを利用する割合(0.0〜1.0)
+
+#席の時間制限
+SEAT_RESTRICT = 'SHORT' # SHORTは10～20、NORMALは15～25、LONGは20～30をeating_durationに指定する。
+
+# ==========================================
 # 1. レイアウト
 # ==========================================
 WIDTH = 45
@@ -137,6 +148,10 @@ counter_queues = {12:[],16:[],22:[],26:[],32:[],36:[]}
 ticket_busy = [False, False, False]
 counter_busy = {14: False, 24: False, 34: False}
 
+#モバイルオーダー
+mobile_ready = []       # 受け取り待ちのモバイル客
+mobile_picking = [0]    # 受け取りに向かっている客
+
 
 # *1
 """
@@ -164,7 +179,13 @@ class Group:
         self.leader_seated = True
         self.timer_started = True
         if self.is_stayer_group:
-            self.eating_duration = random.randint(15, 25) 
+            # SEAT_RESTRICTで5分刻みで、どれくらい長く滞在させるか３段階の変更ができる
+            if SEAT_RESTRICT == 'NORMAL':
+                self.eating_duration = random.randint(15, 25) 
+            elif SEAT_RESTRICT == 'SHORT':
+                self.eating_duration = random.randint(10, 20)
+            elif SEAT_RESTRICT == 'LONG':
+                self.eating_duration = random.randint(20, 30)
         print(f"  [Group {self.group_id}] リーダーが座りました！タイマー開始。")
     
     def member_seated(self):
@@ -172,7 +193,12 @@ class Group:
         if self.seated_count == self.total_count:
             self.timer_started = True
             if self.is_stayer_group:
-                self.eating_duration = random.randint(15, 25) 
+                if SEAT_RESTRICT == 'NORMAL':
+                    self.eating_duration = random.randint(15, 25)
+                elif SEAT_RESTRICT == 'SHORT':
+                    self.eating_duration = random.randint(10, 20)
+                elif SEAT_RESTRICT == 'LONG':
+                    self.eating_duration = random.randint(20, 30)
             print(f"  [Group {self.group_id}] 全員揃いました！タイマー開始。")
 
 class Agent:
@@ -186,6 +212,7 @@ class Agent:
         self.state = 'INITIAL'
         self.queue_index = None      
         self.counter_lane = None
+        self.notify_timer = None
         self.menu = random.choices(
             [MENU_CURRY, MENU_SETMEAL, MENU_NOODLE],
             weights=[15, 40, 45],
@@ -417,8 +444,23 @@ class Agent:
             else:
                 # カウンター解放
                 counter_busy[self.counter_lane] = False
-                # 席へ移動する状態へ遷移
-                self.state = "PROCESS"
+                if self.role == 'MOBILE':
+                    self.path = [(self.seat_xy[0], WAITING_PASS_Y), self.seat_xy]
+                    self.state = 'RETURN_TO_SEAT'
+                else:
+                    # 席へ移動する状態へ遷移
+                    self.state = "PROCESS"
+                return
+
+        if self.state == 'RETURN_TO_SEAT':
+            if self.path:
+                tx, ty = self.path[0]
+                self.move_toward(tx, ty)
+                if (self.x, self.y) == (tx, ty):
+                    self.path.pop(0)
+            else:
+                self.state = 'SEATED_WAITING'
+                self.group.member_seated()
                 return
 
         # 7. 席の割り当てと移動
@@ -451,31 +493,53 @@ class Agent:
                     return
                 
             if self.path:
-                    tx,ty = self.path[0]
-                    self.move_toward(tx,ty)
-                    if (self.x , self.y) == (tx,ty):
-                        self.path.pop(0)
-                
-            else:
-                self.state = 'SEATED_WAITING'
-                self.group.member_seated()
-                return
- 
-                
-
-            if self.path:
-                tx, ty = self.path[0]
-                self.move_toward(tx, ty)
+                tx,ty = self.path[0]
+                self.move_toward(tx,ty)
                 # if self.x < tx: self.x += 1
                 # elif self.x > tx: self.x -= 1
                 # if self.y < ty: self.y += 1
                 # elif self.y > ty: self.y -= 1
+                if (self.x , self.y) == (tx,ty):
+                    self.path.pop(0)
+                
+            else: #席に到達済み
+                if self.role == 'MOBILE':
+                    self.state = 'MOBILE_WAITING'
+                    self.notify_timer = random.randint(5, 12)  #注文から調理完了
+                else:
+                    self.state = 'SEATED_WAITING'
+                    self.group.member_seated()
+                return
+
+        # MOBILE： 席で待ち、カウンター列へ合流
+        if self.state == 'MOBILE_WAITING':
+            if self.notify_timer is not None:
+                self.notify_timer -= 1
+                if self.notify_timer <= 0:
+                    self.notify_timer = None
+                    mobile_ready.append(self)
+            # 受け取り中の客が上限未満 かつ 自分が待ちの先頭なら取りに行く
+            if (mobile_ready and mobile_ready[0] is self and mobile_picking[0] < 6):
+                mobile_ready.pop(0)
+                mobile_picking[0] += 1
+                lane = min(counter_queues.keys(), key=lambda k: abs(k - self.seat_xy[0]))
+                self.counter_lane = lane
+                self.path = [(lane, WAITING_PASS_Y)]  # 受け取り口(カウンターに重ねて表示)
+                self.state = 'MOBILE_PICKUP'
+            return
+
+        # MOBILE：受け取り口へ移動→受け取ったら席へ戻る
+        if self.state == 'MOBILE_PICKUP':
+            if self.path:
+                tx, ty = self.path[0]
+                self.move_toward(tx, ty)
                 if (self.x, self.y) == (tx, ty):
                     self.path.pop(0)
             else:
-                self.state = 'SEATED_WAITING'
-                self.group.member_seated()
-                return
+                mobile_picking[0] -= 1   # 受け取り完了、枠を1つ空ける
+                self.path = [(self.seat_xy[0], WAITING_PASS_Y), self.seat_xy]
+                self.state = 'RETURN_TO_SEAT'
+            return
 
         # グループが全員揃ってタイマーが動いていたら食事状態に遷移させる
         if self.state == 'SEATED_WAITING':
@@ -540,23 +604,26 @@ class Agent:
 # ==========================================
 all_agents = []
 all_groups = []
+x_history = []
+y_history = []
 agent_id_counter = 1
 group_id_counter = 101
 
-fig, ax = plt.subplots(figsize=(12, 8))
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
+
 
 # シミュレーション
 for step in range(1, 1201):
-    ax.clear()
+    ax1.clear()
     
     # 1. 背景マップとラベルの描画
-    ax.imshow(numeric_map, cmap=mcolors.ListedColormap(COLOR_LIST))
+    ax1.imshow(numeric_map, cmap=mcolors.ListedColormap(COLOR_LIST))
     labels_to_show = [
         (2, HEIGHT-2, "Entrance"), (2, 16, "Ticket"), (2, 8, "Queue"), 
         (24, 3, "Kitchen"), (14, 5, "C1"), (24, 5, "C2"), (34, 5, "C3"), (25, 20, "Tables")
     ]
     for lx, ly, text in labels_to_show:
-        ax.text(lx, ly, text, color="red", fontsize=10, ha="center", va="center", 
+        ax1.text(lx, ly, text, color="red", fontsize=10, ha="center", va="center", 
                  bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="black", lw=1, alpha=0.8))
         
     # 2. ランダムに新しいグループを店内に投入
@@ -576,7 +643,13 @@ for step in range(1, 1201):
 
         # メンバー生成
         for i in range(group_size):
-            role = 'WAITING' if i == 0 else ('STAYER' if new_group.is_stayer_group else 'DIRECT')
+            if MOBILE_ORDER_ENABLED and random.random() < MOBILE_ORDER_RATIO:
+                role = 'MOBILE'
+            elif i == 0:
+                role = 'WAITING'
+            else:
+                role = 'STAYER' if new_group.is_stayer_group else 'DIRECT'
+                
             new_agent = Agent(agent_id=agent_id_counter, role=role, group=new_group)
 
             if role == 'WAITING':
@@ -594,18 +667,28 @@ for step in range(1, 1201):
         agent.update()
         if agent.x != -1 and agent.y != -1:
             active_count += 1
-            color = 'red' if agent.role == 'WAITING' else ('purple' if agent.role == 'STAYER' else 'blue')
-            ax.plot(agent.x, agent.y, marker='o', color=color, markersize=10, markeredgecolor='black', zorder=5)
-            ax.text(agent.x, agent.y - 1.2, f"{agent.role[0]}{agent.agent_id}", 
-                    color="black", weight="bold", fontsize=7, ha="center")
+            color = {'WAITING': 'red', 'STAYER': 'purple', 'DIRECT': 'blue', 'MOBILE': 'green'}[agent.role]
+            ax1.plot(agent.x, agent.y, marker='o', color=color, markersize=7, markeredgecolor='black', zorder=5)
+            ax1.text(agent.x, agent.y - 1.2, f"{agent.role[0]}{agent.agent_id}", 
+                    color="black", weight="bold", fontsize=6, ha="center")
+    
+    # 5step毎に今いる人をカウントしてプロット
+    if step == 0 or step % 5 == 0:
+        x_history.append(step)
+        y_history.append(active_count)
+        ax2.plot(x_history, y_history, color='forestgreen')
+        ax2.set_xlabel("step")
+        ax2.set_ylabel("user")
+        ax2.set_title("statistics" , fontsize=14)
 
     # 4. 各グループのタイマー進行
     for group in all_groups:
         if group.timer_started and group.eating_duration > 0:
             group.eating_duration -= 1
 
-    plt.title(f"Multi-Group Canteen Simulation - Step {step} (Active Guests: {active_count})", fontsize=14)
+    ax1.set_title(f"Multi-Group Canteen Simulation - Step {step} \n (Active Guests: {active_count}) \n {SEAT_RESTRICT} var." , fontsize=14)
     
+
     display.clear_output(wait=True)
     display.display(fig)
     plt.pause(0.1)
