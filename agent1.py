@@ -8,11 +8,37 @@ from IPython import display
 # ==========================================
 
 # モバイルオーダー
-MOBILE_ORDER_ENABLED = True   # モバイルオーダーのオン・オフ
-MOBILE_ORDER_RATIO = 0.5      # モバイルオーダーを利用する割合(0.0〜1.0)
+MOBILE_ORDER_ENABLED = True # モバイルオーダーのオン・オフ
+MOBILE_ORDER_RATIO = 0.5    # モバイルオーダーを利用する割合(0.0〜1.0)
 
-#席の時間制限
+#　席の時間制限
 SEAT_RESTRICT = 'SHORT' # SHORTは10～20、NORMALは15～25、LONGは20～30をeating_durationに指定する。
+
+#　受け取り口増やす　
+EXPAND_PICKUP_COUNTER = False
+
+# メニュー
+MENU_CURRY = 0
+MENU_SETMEAL = 1
+MENU_NOODLE = 2
+
+# 各メニューのカウンターレーン（x座標）
+# EXPAND_PICKUP_COUNTER=True で全メニュー2レーンずつに増設
+if EXPAND_PICKUP_COUNTER:
+    MENU_LANES = {MENU_CURRY: [12, 16], MENU_SETMEAL: [22, 26], MENU_NOODLE: [32, 36]}
+else:
+    MENU_LANES = {MENU_CURRY: [14], MENU_SETMEAL: [24], MENU_NOODLE: [34]}
+ALL_LANES = [lane for lanes in MENU_LANES.values() for lane in lanes]
+
+# モバイル受け取り枠の上限（同時に取りに行ける人数）＝レーン数×3
+MOBILE_PICKUP_CAPACITY = len(ALL_LANES) * 3
+
+#　不満度の設定
+WAIT_TOLERANCE = 40 # この待ちステップ数までは不満度0（許容範囲）
+DISSAT_PER_STEP = 0.4 # 許容を超えた1ステップあたりの不満度
+
+# ロール比率
+ROLE_WEIGHTS = {'WAITING': 70, 'DIRECT': 20, 'STAYER': 10}
 
 # ==========================================
 # 1. レイアウト
@@ -35,9 +61,8 @@ for y in range(1, 5):
         BASE_MAP[y][x] = "K"
 
 # カウンター提供口（y=5）
-BASE_MAP[5][14] = "C"
-BASE_MAP[5][24] = "C"
-BASE_MAP[5][34] = "C"
+for lane in ALL_LANES:
+    BASE_MAP[5][lane] = "C"
 
 # 返却口（右上奥 y=5〜7）
 for y in range(5, 8):
@@ -65,9 +90,8 @@ for y in range(6, 26):
 
 # カウンター列
 for y in range(6, 13):
-    BASE_MAP[y][14] = "Q"
-    BASE_MAP[y][24] = "Q"
-    BASE_MAP[y][34] = "Q"
+    for lane in ALL_LANES:
+        BASE_MAP[y][lane] = "Q"
 
 # 座席（T）の配置 ＆ 座標リストの自動回収
 SEATS = []
@@ -88,25 +112,8 @@ numeric_map = [[SYMBOL_TO_INT[cell] for cell in row] for row in BASE_MAP]
 ENTRANCE = (2, HEIGHT-2) 
 TICKET_MACHINES = [(2, 12), (2, 16), (2, 20)]
 
-MENU_CURRY = 0
-MENU_SETMEAL = 1
-MENU_NOODLE = 2
-
-COUNTERS = {
-    MENU_CURRY: [(14,5)],
-    MENU_SETMEAL: [(24,5)],
-    MENU_NOODLE: [(34,5)]
-}
-
-
-# *1 カウンター2レーンずつ
-"""
-COUNTERS = {
-    MENU_CURRY:[(12,5),(16,5)],
-    MENU_SETMEAL:[(22,5),(26,5)],
-    MENU_NOODLE:[(32,5),(36,5)]
-}
-"""
+# メニュー→受け取り口座標（MENU_LANESから生成）
+COUNTERS = {menu: [(lane, 5) for lane in lanes] for menu, lanes in MENU_LANES.items()}
 
 
 # 壁を迂回するための「安全な通路（チェックポイント）」
@@ -120,44 +127,21 @@ DIRECT_PASS_Y = 24   # 壁(y=10〜20)の下をくぐる安全なY座標
 QUEUE_TICKET = [(2, y) for y in range(6, 26)]
 ticket_queue = []  
 
-QUEUE_COUNTER = {
-    14: [(14, y) for y in range(6, 13)],
-    24: [(24, y) for y in range(6, 13)],
-    34: [(34, y) for y in range(6, 13)]
-}
+QUEUE_COUNTER = {lane: [(lane, y) for y in range(6, 13)] for lane in ALL_LANES}
 
-
-# *1
-"""
-QUEUE_COUNTER
-14→12,16
-24→22,26
-34→32,36
-"""
-
-
-counter_queues = {14: [], 24: [], 34: []}
-
-
-# *1
-"""
-counter_queues = {12:[],16:[],22:[],26:[],32:[],36:[]}
-"""
-
+counter_queues = {lane: [] for lane in ALL_LANES}
 
 ticket_busy = [False, False, False]
-counter_busy = {14: False, 24: False, 34: False}
+counter_busy = {lane: False for lane in ALL_LANES}
 
 #モバイルオーダー
-mobile_ready = []       # 受け取り待ちのモバイル客
-mobile_picking = [0]    # 受け取りに向かっている客
+mobile_ready = [] # 受け取り待ちのモバイル客
+mobile_picking = [0] # 受け取りに向かっている客
 
-
-# *1
-"""
-※counter_queuesと同様
-"""
-
+satisfaction_log = []   # (role, dissatisfaction) を食事開始時に記録
+def compute_dissatisfaction(wait):
+    # 許容を超えた待ち時間に比例、0〜100でクリップ
+    return min(100, max(0, (wait - WAIT_TOLERANCE) * DISSAT_PER_STEP))
 
 # ==========================================
 # 2. エージェントとグループのロジック
@@ -213,6 +197,9 @@ class Agent:
         self.queue_index = None      
         self.counter_lane = None
         self.notify_timer = None
+        self.serve_timer = None # 受け取り口での受け取りにかかる残りステップ
+        self.wait_time = 0 # 食べ始めるまでの待ちステップ数
+        self.dissatisfaction = None # 食事開始時に確定
         self.menu = random.choices(
             [MENU_CURRY, MENU_SETMEAL, MENU_NOODLE],
             weights=[15, 40, 45],
@@ -250,6 +237,9 @@ class Agent:
             self.state = 'PROCESS'
 
     def update(self):
+        # 食べ始める前・在店中だけ待ち時間を数える
+        if self.dissatisfaction is None and (self.x, self.y) != (-1, -1):
+            self.wait_time += 1
         # 1. 券売機列に並んでいる状態
         if self.role == 'WAITING' and self.state == 'INITIAL':
             if self.queue_index < len(QUEUE_TICKET):
@@ -309,78 +299,8 @@ class Agent:
                     if (self.x, self.y) == (tx, ty):
                         ticket_busy[i] = False
                 
-                # 最短のカウンター列を選ぶ
-                if self.menu == MENU_CURRY:
-                    candidates = [14]
-
-                elif self.menu == MENU_SETMEAL:
-                    candidates = [24]
-                
-                else:
-                    candidates = [34]
-                
-
-                # *1
-                """
-                if self.menu==MENU_CURRY:
-                    candidates=[12,16]
-
-                elif self.menu==MENU_SETMEAL:
-                    candidates=[22,26]
-
-                else:
-                    candidates=[32,36]                
-                """
-
-                # *2 定食・丼だけ2レーン
-                """
-                if self.menu==MENU_CURRY:
-                    candidates=[14]
-
-                elif self.menu==MENU_SETMEAL:
-                    candidates=[22,26]
-
-                else:
-                    candidates=[34]
-                """
-
-                # *3 麺だけ2レーン
-                """
-                if self.menu==MENU_CURRY:
-                    candidates=[14]
-
-                elif self.menu==MENU_SETMEAL:
-                    candidates=[24]
-
-                else:
-                    candidates=[32,36]
-                """
-
-                # *4 定食・丼だけ4レーン
-                """
-                if self.menu==MENU_CURRY:
-                    candidates=[14]
-
-                elif self.menu==MENU_SETMEAL:
-                    candidates=[18,22,26,30]
-
-                else:
-                    candidates=[34]
-                """
-
-                # *5 麺だけ4レーン
-                """
-                if self.menu==MENU_CURRY:
-                    candidates=[14]
-
-                elif self.menu==MENU_SETMEAL:
-                    candidates=[24]
-
-                else:
-                    candidates=[28,32,36,40]
-                """
-
-                
+                # メニューに対応する候補レーンから、一番空いている列を選ぶ
+                candidates = MENU_LANES[self.menu]
                 lane = min(
                     candidates,
                     key=lambda x: len(counter_queues[x])
@@ -420,8 +340,7 @@ class Agent:
             queue = counter_queues[lane]
             if not counter_busy[lane]:
                 counter_busy[lane] = True
-                idx = {14:0, 24:1, 34:2}[lane]
-                cx, cy = lane,5
+                cx, cy = lane, 5
                 self.path = [(cx, cy)]
                 self.state = "TO_COUNTER_SPOT"
                 
@@ -438,12 +357,19 @@ class Agent:
             if self.path:
                 tx, ty = self.path[0]
                 self.move_toward(tx, ty)
-                
+
                 if (self.x, self.y) == (tx, ty):
                     self.path.pop(0)
             else:
-                # カウンター解放
+                # 受け取りにかかる時間（この間 counter_busy は True のまま＝次の人は待つ）
+                if self.serve_timer is None:
+                    self.serve_timer = random.randint(1, 5)
+                if self.serve_timer > 0:
+                    self.serve_timer -= 1
+                    return
+                # 受け取り完了 → カウンター解放
                 counter_busy[self.counter_lane] = False
+                self.serve_timer = None
                 if self.role == 'MOBILE':
                     self.path = [(self.seat_xy[0], WAITING_PASS_Y), self.seat_xy]
                     self.state = 'RETURN_TO_SEAT'
@@ -505,7 +431,7 @@ class Agent:
             else: #席に到達済み
                 if self.role == 'MOBILE':
                     self.state = 'MOBILE_WAITING'
-                    self.notify_timer = random.randint(5, 12)  #注文から調理完了
+                    self.notify_timer = random.randint(1, 5)  #注文から調理完了
                 else:
                     self.state = 'SEATED_WAITING'
                     self.group.member_seated()
@@ -519,7 +445,7 @@ class Agent:
                     self.notify_timer = None
                     mobile_ready.append(self)
             # 受け取り中の客が上限未満 かつ 自分が待ちの先頭なら取りに行く
-            if (mobile_ready and mobile_ready[0] is self and mobile_picking[0] < 6):
+            if (mobile_ready and mobile_ready[0] is self and mobile_picking[0] < MOBILE_PICKUP_CAPACITY):
                 mobile_ready.pop(0)
                 mobile_picking[0] += 1
                 lane = min(counter_queues.keys(), key=lambda k: abs(k - self.seat_xy[0]))
@@ -545,6 +471,8 @@ class Agent:
         if self.state == 'SEATED_WAITING':
             if self.group.seated_count >= 1:
                 self.state = 'EATING'
+                self.dissatisfaction = compute_dissatisfaction(self.wait_time)
+                satisfaction_log.append((self.role, self.dissatisfaction))
 
         # 8. 食事中（タイマー終了を監視）
         if self.state == 'EATING':
@@ -606,10 +534,12 @@ all_agents = []
 all_groups = []
 x_history = []
 y_history = []
+d_history = []          # 不満度（累積平均）の履歴
 agent_id_counter = 1
 group_id_counter = 101
 
-fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(16, 6))
+fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(13, 6))
+ax2b = ax2.twinx()      # 不満度用の右側の軸
 
 
 # シミュレーション
@@ -619,9 +549,9 @@ for step in range(1, 1201):
     # 1. 背景マップとラベルの描画
     ax1.imshow(numeric_map, cmap=mcolors.ListedColormap(COLOR_LIST))
     labels_to_show = [
-        (2, HEIGHT-2, "Entrance"), (2, 16, "Ticket"), (2, 8, "Queue"), 
-        (24, 3, "Kitchen"), (14, 5, "C1"), (24, 5, "C2"), (34, 5, "C3"), (25, 20, "Tables")
-    ]
+        (2, HEIGHT-2, "Entrance"), (2, 16, "Ticket"), (2, 8, "Queue"),
+        (24, 3, "Kitchen"), (25, 20, "Tables")
+    ] + [(lane, 5, f"C{i+1}") for i, lane in enumerate(ALL_LANES)]
     for lx, ly, text in labels_to_show:
         ax1.text(lx, ly, text, color="red", fontsize=10, ha="center", va="center", 
                  bbox=dict(boxstyle="round,pad=0.3", fc="white", ec="black", lw=1, alpha=0.8))
@@ -643,12 +573,15 @@ for step in range(1, 1201):
 
         # メンバー生成
         for i in range(group_size):
-            if MOBILE_ORDER_ENABLED and random.random() < MOBILE_ORDER_RATIO:
+            # メンバーごとに独立して役割を抽選（WAITINGが最多）
+            role = random.choices(
+                list(ROLE_WEIGHTS.keys()),
+                weights=list(ROLE_WEIGHTS.values()),
+                k=1
+            )[0]
+            # モバイル有効時：WAITINGの一部がMOBILEに置き換わる（WAITING↓ MOBILE↑）
+            if MOBILE_ORDER_ENABLED and role == 'WAITING' and random.random() < MOBILE_ORDER_RATIO:
                 role = 'MOBILE'
-            elif i == 0:
-                role = 'WAITING'
-            else:
-                role = 'STAYER' if new_group.is_stayer_group else 'DIRECT'
                 
             new_agent = Agent(agent_id=agent_id_counter, role=role, group=new_group)
 
@@ -672,25 +605,117 @@ for step in range(1, 1201):
             ax1.text(agent.x, agent.y - 1.2, f"{agent.role[0]}{agent.agent_id}", 
                     color="black", weight="bold", fontsize=6, ha="center")
     
-    # 5step毎に今いる人をカウントしてプロット
+    # 5step毎に今いる人数と平均不満度をプロット
     if step == 0 or step % 5 == 0:
         x_history.append(step)
         y_history.append(active_count)
         ax2.plot(x_history, y_history, color='forestgreen')
         ax2.set_xlabel("step")
-        ax2.set_ylabel("user")
+        ax2.set_ylabel("user", color='forestgreen')
         ax2.set_title("statistics" , fontsize=14)
+
+        # 不満度（開始からの累積平均）を右軸に赤で
+        avg_d = (sum(d for _, d in satisfaction_log) / len(satisfaction_log)) if satisfaction_log else 0
+        d_history.append(avg_d)
+        ax2b.plot(x_history, d_history, color='crimson')
+        ax2b.set_ylabel("dissatisfaction", color='crimson')
+        ax2b.set_ylim(0, 100)
 
     # 4. 各グループのタイマー進行
     for group in all_groups:
         if group.timer_started and group.eating_duration > 0:
             group.eating_duration -= 1
+    # 不満度表示
+    avg_dissat = (sum(d for _, d in satisfaction_log) / len(satisfaction_log)) if satisfaction_log else 0
+    per_role = []
+    for r in ['WAITING', 'DIRECT', 'MOBILE']:
+        vals = [d for role, d in satisfaction_log if role == r]
+        if vals:
+            per_role.append(f"{r[0]}:{sum(vals)/len(vals):.0f}")
+    ax1.text(0.0, -0.13, f"avg dissatisfaction: {avg_dissat:.1f}", transform=ax1.transAxes, fontsize=9, color="dimgray", ha="left", va="top")
+    ax1.text(0.0, -0.18, f"Active Guests: {active_count}", transform=ax1.transAxes, fontsize=9, color="dimgray", ha="left", va="top")
 
-    ax1.set_title(f"Multi-Group Canteen Simulation - Step {step} \n (Active Guests: {active_count}) \n {SEAT_RESTRICT} var." , fontsize=14)
+    ax1.text(0.5, -0.13, f"SEAT_RESTRICT: {SEAT_RESTRICT}", transform=ax1.transAxes, fontsize=9, color="dimgray", ha="left", va="top")  
+    ax1.text(0.5, -0.18, f"MOBILE_ORDER: {MOBILE_ORDER_ENABLED}, RATIO: {MOBILE_ORDER_RATIO}", transform=ax1.transAxes, fontsize=9, color="dimgray", ha="left", va="top")
+
+    ax1.set_title(f"Multi-Group Canteen Simulation - Step {step}" , fontsize=14)
     
 
     display.clear_output(wait=True)
     display.display(fig)
     plt.pause(0.1)
 
+# 終了時：グラフ画像を保存してから閉じる
+import os, datetime
+os.makedirs("results", exist_ok=True)
+stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
+mode = "mobileON" if MOBILE_ORDER_ENABLED else "mobileOFF"
+base_path = os.path.join("results", f"sim_{stamp}_{mode}_{SEAT_RESTRICT}")
+fig.savefig(base_path + ".png", dpi=120, bbox_inches="tight")
 plt.close()
+
+# ==========================================
+# 4. 終了時の詳細データをファイルに書き出し
+# ==========================================
+import statistics, os, datetime
+
+def _avg(vals):
+    return f"{statistics.mean(vals):5.1f}" if vals else "  -  "
+
+lines = []
+def w(s=""):
+    lines.append(s)
+
+w("=" * 58)
+w(" シミュレーション結果")
+w("=" * 58)
+
+# --- 条件 ---
+w("[条件]")
+w(f"  モバイルオーダー : {'ON' if MOBILE_ORDER_ENABLED else 'OFF'} (利用割合 {MOBILE_ORDER_RATIO})")
+w(f"  席の時間制限     : {SEAT_RESTRICT}")
+w(f"  受け取り口拡張   : {EXPAND_PICKUP_COUNTER}")
+w(f"  総ステップ数     : {step}")
+
+# --- 客数 ---
+total_agents = len(all_agents)
+served = [a for a in all_agents if a.dissatisfaction is not None]
+unserved = total_agents - len(served)
+w("")
+w("[客数]")
+w(f"  総グループ数     : {len(all_groups)}")
+w(f"  総客数           : {total_agents}")
+if total_agents:
+    w(f"  食事到達         : {len(served)}  ({len(served) / total_agents * 100:.1f}%)")
+    w(f"  未到達(滞留中)   : {unserved}")
+
+# --- ロール別 ---
+w("")
+w("[ロール別]  (不満度・待ちは食事到達者のみ)")
+w(f"  {'role':8s}{'num':>6s}{'share':>8s}{'dissat':>8s}{'wait_avg':>10s}{'wait_max':>10s}")
+for r in ['WAITING', 'DIRECT', 'STAYER', 'MOBILE']:
+    n = sum(1 for a in all_agents if a.role == r)
+    if n == 0:
+        continue
+    dis = [a.dissatisfaction for a in served if a.role == r]
+    wt = [a.wait_time for a in served if a.role == r]
+    share = n / total_agents * 100 if total_agents else 0
+    w(f"  {r:8s}{n:6d}{share:7.1f}%{_avg(dis):>8s}{_avg(wt):>10s}{(max(wt) if wt else 0):10d}")
+
+# --- 全体 ---
+all_dis = [a.dissatisfaction for a in served]
+all_wt = [a.wait_time for a in served]
+if all_dis:
+    w("")
+    w("[全体]")
+    w(f"  平均不満度 : {statistics.mean(all_dis):.1f}   中央値 {statistics.median(all_dis):.1f}")
+    w(f"  待ち時間   : 平均 {statistics.mean(all_wt):.1f} / 中央 {statistics.median(all_wt):.0f} / 最大 {max(all_wt)}")
+
+w("=" * 58)
+
+# --- ファイルへ書き出し（画像と同じ名前で対にする）---
+out_path = base_path + ".txt"
+with open(out_path, "w", encoding="utf-8") as f:
+    f.write("\n".join(lines) + "\n")
+
+print(f"結果を {out_path} と {base_path}.png に保存しました")
