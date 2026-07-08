@@ -146,7 +146,7 @@ DIRECT_PASS_Y = 24
 QUEUE_TICKET = [(2, y) for y in range(6, 26)]
 ticket_queue = []
 
-QUEUE_COUNTER = {lane: [(lane, y) for y in range(6, 13)] for lane in ALL_LANES}
+QUEUE_COUNTER = {lane: [(lane, y) for y in range(6, 26)] for lane in ALL_LANES}
 counter_queues = {lane: [] for lane in ALL_LANES}
 
 ticket_busy = [False, False, False]
