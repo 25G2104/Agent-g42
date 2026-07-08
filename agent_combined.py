@@ -8,15 +8,19 @@ from IPython import display
 # ==========================================
 
 # 受け取りカウンター増設（レーンを2本化）
-EXPAND_PICKUP_COUNTER = False
+EXPAND_PICKUP_COUNTER = True
 
-# 座席の滞在時間制御（3段階から選択）… 長居グループの食事ステップ数を変える
+# 座席の滞在時間制御（3段階から選択）
 # 'SHORT' 'NORMAL' 'LONG'
-SEAT_RESTRICT = 'SHORT'
+SEAT_RESTRICT = 'NORMAL'
 
 # モバイルオーダー
-MOBILE_ORDER_ENABLED  = True   # モバイルオーダー導入
+MOBILE_ORDER_ENABLED  = False   # モバイルオーダー導入
 MOBILE_ORDER_RATIO = 0.5# WAITINGのうちMOBILEに置き換わる割合
+
+# 来店の波（混雑の波）
+USE_WAVE = True            # True: 波あり（時々混雑） / False: 一定確率で来店（固定）
+FIXED_ARRIVAL_PROB = 0.30  # 波を使わないときの入店確率（毎ステップ一定）
 
 # ==========================================
 # 条件設定
@@ -26,6 +30,10 @@ wave_end_step = 0
 
 def arrival_probability(step):
     global wave_active, wave_end_step
+
+    # 波を使わない場合は一定確率で来店
+    if not USE_WAVE:
+        return FIXED_ARRIVAL_PROB
 
     # 波が発生していないとき、ランダムに波を開始
     if not wave_active:
@@ -318,6 +326,18 @@ class Agent:
                 tx, ty = path[self.queue_index]
             else:
                 tx, ty = path[-1]
+
+            # 中央の壁(x=9, y=10〜20)の左側にいる客は、そのまま右へ進むと
+            # 壁際(x=7,8)で行き止まりになる。まず壁の上(y=5)へ回り込んでから
+            # 目的レーンのxへ抜ける（壁際での滞留を防ぐ）
+            if self.x < 9:
+                if self.y > WAITING_PASS_Y:
+                    # 通路(CORRIDOR_X)を通って壁の上まで上がる
+                    self.move_toward(CORRIDOR_X, WAITING_PASS_Y)
+                else:
+                    # 壁の上まで来たら目的レーンのxへ水平移動して壁の右側へ抜ける
+                    self.move_toward(lane, WAITING_PASS_Y)
+                return
 
             if (self.x, self.y) != (tx, ty):
                 self.move_toward(tx, ty)
