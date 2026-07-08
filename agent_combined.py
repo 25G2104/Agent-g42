@@ -8,7 +8,7 @@ from IPython import display
 # ==========================================
 
 # 受け取りカウンター増設（レーンを2本化）
-EXPAND_PICKUP_COUNTER = True
+EXPAND_PICKUP_COUNTER = False
 
 # 座席の滞在時間制御（3段階から選択）
 # 'SHORT' 'NORMAL' 'LONG'
@@ -20,7 +20,7 @@ MOBILE_ORDER_RATIO = 0.5# WAITINGのうちMOBILEに置き換わる割合
 
 # 来店の波（混雑の波）
 USE_WAVE = True            # True: 波あり（時々混雑） / False: 一定確率で来店（固定）
-FIXED_ARRIVAL_PROB = 0.30  # 波を使わないときの入店確率（毎ステップ一定）
+FIXED_ARRIVAL_PROB = 0.60  # 波を使わないときの入店確率（毎ステップ一定）
 
 # ==========================================
 # 条件設定
