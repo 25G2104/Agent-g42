@@ -172,8 +172,6 @@ class Group:
         self.group_id = group_id
         self.total_count = size
         self.seated_count = 0
-        self.eating_duration = random.randint(6, 20)
-        self.timer_started = False
 
         #座席制限
         if SEAT_RESTRICT == 'NORMAL':
@@ -182,6 +180,8 @@ class Group:
             self.eating_duration = random.randint(6, 15)
         elif SEAT_RESTRICT == 'LONG':
             self.eating_duration = random.randint(6, 25)
+
+        self.timer_started = False
             
         self.is_stayer_group = random.random() < 0.5
         self.assigned_seats = []
