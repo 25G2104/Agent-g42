@@ -10,6 +10,9 @@ from IPython import display
 # 受け取りカウンター増設（レーンを2本化）
 EXPAND_PICKUP_COUNTER = False
 
+# 券売機の増設（3台→4台）
+EXPAND_TICKET_MACHINE = True
+
 # 座席の滞在時間制御（3段階から選択）
 # 'SHORT' 'NORMAL' 'LONG'
 SEAT_RESTRICT = 'NORMAL'
@@ -63,6 +66,12 @@ if EXPAND_PICKUP_COUNTER:
 else:
     MENU_LANES = {MENU_CURRY: [14], MENU_SETMEAL: [24], MENU_NOODLE: [34]}
 
+# 券売機の位置（増設時は4台）
+if EXPAND_TICKET_MACHINE:
+    TICKET_MACHINES = [(2, 12), (2, 16), (2, 20), (2, 24)]  # 4台
+else:
+    TICKET_MACHINES = [(2, 12), (2, 16), (2, 20)]           # 3台（従来）
+
 ALL_LANES = [lane for lanes in MENU_LANES.values() for lane in lanes]
 MOBILE_PICKUP_CAPACITY = len(ALL_LANES) * 3
 
@@ -102,11 +111,6 @@ for y in range(5, 8):
 # 出入口
 BASE_MAP[HEIGHT-1][2] = "D"
 
-# 券売機
-BASE_MAP[12][2] = "R"
-BASE_MAP[16][2] = "R"
-BASE_MAP[20][2] = "R"
-
 # 壁（席との境界）
 for y in range(10, 21):
     BASE_MAP[y][9] = "W"
@@ -133,12 +137,11 @@ for y in range(16, 28, 3):
                     BASE_MAP[y+dy][x+dx] = "T"
                     SEATS.append((x+dx, y+dy))
 
-SYMBOL_TO_INT = {".": 0, "W": 1, "D": 2, "R": 3, "Q": 4, "C": 5, "K": 6, "T": 7, "H": 8}
-COLOR_LIST = ["white", "black", "limegreen", "royalblue", "skyblue", "orange", "darkgray", "peru", "mediumpurple"]
+SYMBOL_TO_INT = {".": 0, "W": 1, "D": 2, "Y": 3, "Q": 4, "C": 5, "K": 6, "T": 7, "H": 8}
+COLOR_LIST = ["white", "black", "limegreen", "yellow", "skyblue", "orange", "darkgray", "peru", "mediumpurple"]
 numeric_map = [[SYMBOL_TO_INT[cell] for cell in row] for row in BASE_MAP]
 
 ENTRANCE = (2, HEIGHT-2)
-TICKET_MACHINES = [(2, 12), (2, 16), (2, 20)]
 COUNTERS = {menu: [(lane, 5) for lane in lanes] for menu, lanes in MENU_LANES.items()}
 
 CORRIDOR_X = 6
@@ -151,10 +154,10 @@ DIRECT_PASS_Y = 24
 QUEUE_TICKET = [(2, y) for y in range(6, 26)]
 ticket_queue = []
 
-QUEUE_COUNTER = {lane: [(lane, y) for y in range(6, 13)] for lane in ALL_LANES}
+QUEUE_COUNTER = {lane: [(lane, y) for y in range(6, 26)] for lane in ALL_LANES}
 counter_queues = {lane: [] for lane in ALL_LANES}
 
-ticket_busy = [False, False, False]
+ticket_busy = [False] * len(TICKET_MACHINES)
 counter_busy = {lane: False for lane in ALL_LANES}
 
 mobile_ready = []
@@ -609,6 +612,10 @@ for step in range(1, 1201):
             color = {'WAITING': 'red', 'STAYER': 'purple', 'DIRECT': 'blue', 'MOBILE': 'green'}[agent.role]
             ax1.plot(agent.x, agent.y, 'o', color=color, markersize=7)
 
+    # 券売機マーカー（黄色ダイヤ）
+    for tx, ty in TICKET_MACHINES:
+        ax1.plot(tx, ty, marker='D', color='yellow', markersize=3)
+
     # グラフ更新
     if step % 5 == 0:
         x_history.append(step)
@@ -630,7 +637,7 @@ for step in range(1, 1201):
     ax1.text(0.0, -0.18, f"Active Guests: {active_count}", transform=ax1.transAxes, fontsize=9, color="dimgray", ha="left", va="top")
 
     ax1.text(0.5, -0.13, f"SEAT_RESTRICT: {SEAT_RESTRICT}   EXPAND_COUNTER: {EXPAND_PICKUP_COUNTER}", transform=ax1.transAxes, fontsize=9, color="dimgray", ha="left", va="top")
-    ax1.text(0.5, -0.18, f"MOBILE_ORDER: {MOBILE_ORDER_ENABLED}", transform=ax1.transAxes, fontsize=9, color="dimgray", ha="left", va="top")
+    ax1.text(0.5, -0.18, f"MOBILE_ORDER: {MOBILE_ORDER_ENABLED}   TICKET: {len(TICKET_MACHINES)}", transform=ax1.transAxes, fontsize=9, color="dimgray", ha="left", va="top")
 
     ax1.set_title(f"Multi-Group Canteen Simulation - Step {step}", fontsize=14)
 
@@ -644,10 +651,11 @@ for step in range(1, 1201):
 import os, datetime
 os.makedirs("results", exist_ok=True)
 stamp = datetime.datetime.now().strftime("%Y%m%d_%H%M%S")
-mode = "mob{}_seat{}_cnt{}".format(
+mode = "mob{}_seat{}_cnt{}_tkt{}".format(
     "ON" if MOBILE_ORDER_ENABLED else "OFF",
     SEAT_RESTRICT,
     "ON" if EXPAND_PICKUP_COUNTER else "OFF",
+    len(TICKET_MACHINES),
 )
 base_path = os.path.join("results", f"sim_{stamp}_{mode}")
 fig.savefig(base_path + ".png", dpi=120, bbox_inches="tight")
@@ -674,6 +682,7 @@ w("[条件]")
 w(f"  モバイルオーダー : {'ON' if MOBILE_ORDER_ENABLED else 'OFF'} (利用割合 {MOBILE_ORDER_RATIO})")
 w(f"  席の時間制限     : {SEAT_RESTRICT}")
 w(f"  受け取り口拡張   : {EXPAND_PICKUP_COUNTER}")
+w(f"  券売機台数       : {len(TICKET_MACHINES)}")
 w(f"  総ステップ数     : {step}")
 
 # --- 客数 ---
@@ -689,6 +698,11 @@ if total_agents:
     w(f"  未到達(滞留中)   : {unserved}")
 
 # --- ロール別 ---
+# num	その役割の人数
+# share	総客数に占める割合
+# dissat	平均不満度
+# wait_avg	平均待ち時間
+# wait_max	最大待ち時間
 w("")
 w("[ロール別]  (不満度・待ちは食事到達者のみ)")
 w(f"  {'role':8s}{'num':>6s}{'share':>8s}{'dissat':>8s}{'wait_avg':>10s}{'wait_max':>10s}")
