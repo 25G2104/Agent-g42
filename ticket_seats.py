@@ -165,7 +165,6 @@ class Group:
         self.group_id = group_id
         self.total_count = size
         self.seated_count = 0
-        self.eating_duration = random.randint(6, 20)
 
         #座席制限
         if SEAT_RESTRICT == 'NORMAL':
